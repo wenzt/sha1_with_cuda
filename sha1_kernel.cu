@@ -152,58 +152,60 @@ __device__ void sha1_gpu_process (sha1_gpu_context *tmp, unsigned int *W)
 	
 }
 
-__global__ void sha1_kernel_global (const unsigned char *data, sha1_gpu_context *ctx, unsigned int *extended, int block_nums)
+__global__ void sha1_kernel_global1 (const unsigned char *data, sha1_gpu_context *ctx, unsigned int *extended)
 {
 	int thread_index = threadIdx.x + blockDim.x * blockIdx.x;
-	int total_threads = blockDim.x;
-	unsigned long temp, t;
-
+	int total_threads = blockDim.x * gridDim.x;
+	unsigned int temp, t;
+	unsigned int *data2 = (unsigned int*)data;
 	/*
 	 * Extend 32 block byte block into 80 byte block.
 	 */
-	for (int i = thread_index; i < block_nums; i += total_threads)
-	{
-		GET_UINT32_BE( extended[i * 80    ], data + i * 64,  0 );
-		GET_UINT32_BE( extended[i * 80 + 1], data + i * 64,  4 );
-		GET_UINT32_BE( extended[i * 80 + 2], data + i * 64,  8 );
-		GET_UINT32_BE( extended[i * 80 + 3], data + i * 64, 12 );
-		GET_UINT32_BE( extended[i * 80 + 4], data + i * 64, 16 );
-		GET_UINT32_BE( extended[i * 80 + 5], data + i * 64, 20 );
-		GET_UINT32_BE( extended[i * 80 + 6], data + i * 64, 24 );
-		GET_UINT32_BE( extended[i * 80 + 7], data + i * 64, 28 );
-		GET_UINT32_BE( extended[i * 80 + 8], data + i * 64, 32 );
-		GET_UINT32_BE( extended[i * 80 + 9], data + i * 64, 36 );
-		GET_UINT32_BE( extended[i * 80 +10], data + i * 64, 40 );
-		GET_UINT32_BE( extended[i * 80 +11], data + i * 64, 44 );
-		GET_UINT32_BE( extended[i * 80 +12], data + i * 64, 48 );
-		GET_UINT32_BE( extended[i * 80 +13], data + i * 64, 52 );
-		GET_UINT32_BE( extended[i * 80 +14], data + i * 64, 56 );
-		GET_UINT32_BE( extended[i * 80 +15], data + i * 64, 60 );
+	for (int i = thread_index; i < 111; i += total_threads)
+	{	
+		unsigned int index_ext = i * 80;
+		unsigned int index_data = i * 16;
+		GET_UINT32_BE( extended[index_ext    ], data2[index_data]);
+		GET_UINT32_BE( extended[index_ext + 1], data2[index_data + 1]);
+		GET_UINT32_BE( extended[index_ext + 2], data2[index_data + 2]);
+		GET_UINT32_BE( extended[index_ext + 3], data2[index_data + 3]);
+		GET_UINT32_BE( extended[index_ext + 4], data2[index_data + 4]);
+		GET_UINT32_BE( extended[index_ext + 5], data2[index_data + 5]);
+		GET_UINT32_BE( extended[index_ext + 6], data2[index_data + 6]);
+		GET_UINT32_BE( extended[index_ext + 7], data2[index_data + 7]);
+		GET_UINT32_BE( extended[index_ext + 8], data2[index_data + 8]);
+		GET_UINT32_BE( extended[index_ext + 9], data2[index_data + 9]);
+		GET_UINT32_BE( extended[index_ext +10], data2[index_data + 10] );
+		GET_UINT32_BE( extended[index_ext +11], data2[index_data + 11] );
+		GET_UINT32_BE( extended[index_ext +12], data2[index_data + 12] );
+		GET_UINT32_BE( extended[index_ext +13], data2[index_data + 13] );
+		GET_UINT32_BE( extended[index_ext +14], data2[index_data + 14] );
+		GET_UINT32_BE( extended[index_ext +15], data2[index_data + 15] );
 
 		for (t = 16; t < 80; t++) {
-			temp = extended[i * 80 + t - 3] ^ extended[i * 80 + t - 8] ^ extended[i * 80 + t - 14] ^ extended[i * 80 + t - 16];
-			extended[i * 80 + t] = S(temp,1);
+			temp = extended[index_ext + t - 3] ^ extended[index_ext + t - 8] ^ extended[index_ext + t - 14] ^ extended[index_ext + t - 16];
+			extended[index_ext + t] = S(temp,1);
 		}
 	}
 	
 
 	/* Wait for the last thread and compute intermediate hash values of extended blocks */
-	__syncthreads();
+	// __syncthreads();
 	
-	if (thread_index == total_threads - 1) {
-		sha1_gpu_context tmp;
-		tmp.state[0] = 0x67452301;
-		tmp.state[1] = 0xEFCDAB89;
-		tmp.state[2] = 0x98BADCFE;
-		tmp.state[3] = 0x10325476;
-		tmp.state[4] = 0xC3D2E1F0;
-		for (t = 0; t < block_nums; t++)
-			sha1_gpu_process (&tmp, (unsigned int*)&extended[t * 80]);
-		ctx->state[0] = tmp.state[0];
-		ctx->state[1] = tmp.state[1];
-		ctx->state[2] = tmp.state[2];
-		ctx->state[3] = tmp.state[3];
-		ctx->state[4] = tmp.state[4];
-	}	
+	// if (thread_index == total_threads - 1) {
+	// 	__shared__ sha1_gpu_context tmp;
+	// 	tmp.state[0] = 0x67452301;
+	// 	tmp.state[1] = 0xEFCDAB89;
+	// 	tmp.state[2] = 0x98BADCFE;
+	// 	tmp.state[3] = 0x10325476;
+	// 	tmp.state[4] = 0xC3D2E1F0;
+	// 	for (t = 0; t < block_nums; t++)
+	// 		sha1_gpu_process (&tmp, (unsigned int*)&extended[t * 80]);
+	// 	ctx->state[0] = tmp.state[0];
+	// 	ctx->state[1] = tmp.state[1];
+	// 	ctx->state[2] = tmp.state[2];
+	// 	ctx->state[3] = tmp.state[3];
+	// 	ctx->state[4] = tmp.state[4];
+	// }	
 }
 

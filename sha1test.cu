@@ -10,16 +10,18 @@
 #include <cuda.h>
 #include <sys/time.h>
 #include "common.h"
+#include <cuda_profiler_api.h>
 
-#define MAX_THREADS_PER_BLOCK 128
+#define MAX_THREADS_PER_BLOCK 256
 #define CUT_SAFE_CALL(call)\
     cudaError err = call;\
     if (err != cudaSuccess) {\
         fprintf(stderr, "Cut error in file '%s' in line %i.\n", __FILE__, __LINE__);\
+        printf("%d\n", err); \
     exit(1);\
 }
-#pragma pack(4)
-typedef struct {
+
+typedef struct __align__(16) {
 	unsigned int state[5];
 } sha1_gpu_context;
 
@@ -51,8 +53,10 @@ typedef struct {
 /* timers used to check performance */
 chronometer chmeter;
 timer_result_t time_res;
-//extern void sha1_cpu (unsigned char *input, int ilen, unsigned char *output);
-extern __global__ void sha1_kernel_global (const unsigned char  *data, sha1_gpu_context  *ctx, unsigned int  *extended, int block_nums);
+__constant__ int dblocks;
+
+//extern __global__ void sha1_kernel_global (const unsigned char  *data, sha1_gpu_context  *ctx, unsigned int *extended);
+void sha1_cpu_process (sha1_gpu_context *tmp, unsigned int *W);
 
 inline void cutStartTimer(struct timeval *timer)
 {
@@ -65,6 +69,191 @@ inline void cutStopTimer(struct timeval *timer, double *time_r)
 	gettimeofday(timer, NULL);
 	*time_r = (double)timer->tv_sec*1000 + (double)timer->tv_usec / 1000 - tmp;
 }
+#define S(x,n) ((x << n) | ((x) >> (32 - n)))
+__host__ __device__ void sha1_gpu_process1 (sha1_gpu_context *tmp, unsigned int *W)
+{
+	unsigned int A, B, C, D, E;
+	A = tmp->state[0];
+	B = tmp->state[1];
+	C = tmp->state[2];
+	D = tmp->state[3];
+	E = tmp->state[4];
+
+#define P(a,b,c,d,e,x)                                  \
+{                                                       \
+    e += S(a,5) + F(b,c,d) + K + x; b = S(b,30);        \
+}
+
+
+#define F(x,y,z) (z ^ (x & (y ^ z)))
+#define K 0x5A827999
+  
+	P( A, B, C, D, E, W[0]  );
+	P( E, A, B, C, D, W[1]  );
+	P( D, E, A, B, C, W[2]  );
+	P( C, D, E, A, B, W[3]  );
+	P( B, C, D, E, A, W[4]  );
+	P( A, B, C, D, E, W[5]  );
+	P( E, A, B, C, D, W[6]  );
+	P( D, E, A, B, C, W[7]  );
+	P( C, D, E, A, B, W[8]  );
+	P( B, C, D, E, A, W[9]  );
+	P( A, B, C, D, E, W[10] );
+	P( E, A, B, C, D, W[11] );
+	P( D, E, A, B, C, W[12] );
+	P( C, D, E, A, B, W[13] );
+	P( B, C, D, E, A, W[14] );
+	P( A, B, C, D, E, W[15] );
+	P( E, A, B, C, D, W[16] );
+	P( D, E, A, B, C, W[17] );
+	P( C, D, E, A, B, W[18] );
+	P( B, C, D, E, A, W[19] );
+  
+#undef K
+#undef F
+
+#define F(x,y,z) (x ^ y ^ z)
+#define K 0x6ED9EBA1
+  
+	P( A, B, C, D, E, W[20] );
+	P( E, A, B, C, D, W[21] );
+	P( D, E, A, B, C, W[22] );
+	P( C, D, E, A, B, W[23] );
+	P( B, C, D, E, A, W[24] );
+	P( A, B, C, D, E, W[25] );
+	P( E, A, B, C, D, W[26] );
+	P( D, E, A, B, C, W[27] );
+	P( C, D, E, A, B, W[28] );
+	P( B, C, D, E, A, W[29] );
+	P( A, B, C, D, E, W[30] );
+	P( E, A, B, C, D, W[31] );
+	P( D, E, A, B, C, W[32] );
+	P( C, D, E, A, B, W[33] );
+	P( B, C, D, E, A, W[34] );
+	P( A, B, C, D, E, W[35] );
+	P( E, A, B, C, D, W[36] );
+	P( D, E, A, B, C, W[37] );
+	P( C, D, E, A, B, W[38] );
+	P( B, C, D, E, A, W[39] );
+  
+#undef K
+#undef F
+
+#define F(x,y,z) ((x & y) | (z & (x | y)))
+#define K 0x8F1BBCDC
+
+	P( A, B, C, D, E, W[40] );
+	P( E, A, B, C, D, W[41] );
+	P( D, E, A, B, C, W[42] );
+	P( C, D, E, A, B, W[43] );
+	P( B, C, D, E, A, W[44] );
+	P( A, B, C, D, E, W[45] );
+	P( E, A, B, C, D, W[46] );
+	P( D, E, A, B, C, W[47] );
+	P( C, D, E, A, B, W[48] );
+	P( B, C, D, E, A, W[49] );
+	P( A, B, C, D, E, W[50] );
+	P( E, A, B, C, D, W[51] );
+	P( D, E, A, B, C, W[52] );
+	P( C, D, E, A, B, W[53] );
+	P( B, C, D, E, A, W[54] );
+	P( A, B, C, D, E, W[55] );
+	P( E, A, B, C, D, W[56] );
+	P( D, E, A, B, C, W[57] );
+	P( C, D, E, A, B, W[58] );
+	P( B, C, D, E, A, W[59] );
+  
+#undef K
+#undef F
+
+#define F(x,y,z) (x ^ y ^ z)
+#define K 0xCA62C1D6
+  
+	P( A, B, C, D, E, W[60] );
+	P( E, A, B, C, D, W[61] );
+	P( D, E, A, B, C, W[62] );
+	P( C, D, E, A, B, W[63] );
+	P( B, C, D, E, A, W[64] );
+	P( A, B, C, D, E, W[65] );
+	P( E, A, B, C, D, W[66] );
+	P( D, E, A, B, C, W[67] );
+	P( C, D, E, A, B, W[68] );
+	P( B, C, D, E, A, W[69] );
+	P( A, B, C, D, E, W[70] );
+	P( E, A, B, C, D, W[71] );
+	P( D, E, A, B, C, W[72] );
+	P( C, D, E, A, B, W[73] );
+	P( B, C, D, E, A, W[74] );
+	P( A, B, C, D, E, W[75] );
+	P( E, A, B, C, D, W[76] );
+	P( D, E, A, B, C, W[77] );
+	P( C, D, E, A, B, W[78] );
+	P( B, C, D, E, A, W[79] );
+  
+#undef K
+#undef F
+
+	tmp->state[0] += A;
+	tmp->state[1] += B;
+	tmp->state[2] += C;
+	tmp->state[3] += D;
+	tmp->state[4] += E;
+	
+}
+__global__ void sha1_kernel_global (const unsigned char *data, sha1_gpu_context *ctx, unsigned int *extended)
+{
+	int thread_index = threadIdx.x + blockDim.x * blockIdx.x;
+	int total_threads = blockDim.x * gridDim.x;
+	unsigned int temp, t;
+	unsigned int *data2 = (unsigned int*)data;
+	/*
+	 * Extend 32 block byte block into 80 byte block.
+	 */
+	for (int i = thread_index; i < dblocks; i += total_threads)
+	{	
+		unsigned int index_ext = i * 80;
+		unsigned int index_data = i * 16;
+		GET_UINT32_BE( extended[index_ext    ], data2[index_data]);
+		GET_UINT32_BE( extended[index_ext + 1], data2[index_data + 1]);
+		GET_UINT32_BE( extended[index_ext + 2], data2[index_data + 2]);
+		GET_UINT32_BE( extended[index_ext + 3], data2[index_data + 3]);
+		GET_UINT32_BE( extended[index_ext + 4], data2[index_data + 4]);
+		GET_UINT32_BE( extended[index_ext + 5], data2[index_data + 5]);
+		GET_UINT32_BE( extended[index_ext + 6], data2[index_data + 6]);
+		GET_UINT32_BE( extended[index_ext + 7], data2[index_data + 7]);
+		GET_UINT32_BE( extended[index_ext + 8], data2[index_data + 8]);
+		GET_UINT32_BE( extended[index_ext + 9], data2[index_data + 9]);
+		GET_UINT32_BE( extended[index_ext +10], data2[index_data + 10] );
+		GET_UINT32_BE( extended[index_ext +11], data2[index_data + 11] );
+		GET_UINT32_BE( extended[index_ext +12], data2[index_data + 12] );
+		GET_UINT32_BE( extended[index_ext +13], data2[index_data + 13] );
+		GET_UINT32_BE( extended[index_ext +14], data2[index_data + 14] );
+		GET_UINT32_BE( extended[index_ext +15], data2[index_data + 15] );
+
+		for (t = 16; t < 80; t++) {
+			temp = extended[index_ext + t - 3] ^ extended[index_ext + t - 8] ^ extended[index_ext + t - 14] ^ extended[index_ext + t - 16];
+			extended[index_ext + t] = S(temp,1);
+		}
+
+	}
+	__syncthreads();
+	
+	if (thread_index == total_threads - 1) {
+		__shared__ sha1_gpu_context tmp;
+		tmp.state[0] = 0x67452301;
+		tmp.state[1] = 0xEFCDAB89;
+		tmp.state[2] = 0x98BADCFE;
+		tmp.state[3] = 0x10325476;
+		tmp.state[4] = 0xC3D2E1F0;
+		for (t = 0; t < dblocks; t++)
+			sha1_gpu_process1 (&tmp, (unsigned int*)&extended[t * 80]);
+		ctx->state[0] = tmp.state[0];
+		ctx->state[1] = tmp.state[1];
+		ctx->state[2] = tmp.state[2];
+		ctx->state[3] = tmp.state[3];
+		ctx->state[4] = tmp.state[4];
+	}	
+}
 /*
  * Run sha1 kernel on GPU
  * input - message
@@ -72,15 +261,16 @@ inline void cutStopTimer(struct timeval *timer, double *time_r)
  * output - buffer to store hash value
  * proc - maximum threads per block
  */
+#define HANDLE 16
 void sha1_gpu_global (unsigned char *input, unsigned long size, unsigned char *output, int proc)
 {
 	int total_threads;		/* Total number of threads in the grid */
 	int threads_per_block;		/* Number of threads in a block */
 	int pad, size_be;		/* Number of zeros to pad, message size in big-enadian. */
 	int total_datablocks;		/* Total number of blocks message is split into */
-	unsigned int *d_extended;	/* Extended blocks on the device */
-	sha1_gpu_context ctx, *d_ctx;	/* Intermediate hash states */
-
+	unsigned int *d_extended[HANDLE];	/* Extended blocks on the device */
+	sha1_gpu_context ctx, *d_ctx[HANDLE];	/* Intermediate hash states */
+	unsigned int* h_extended[HANDLE];
 	/* Initialization vector for SHA-1 */
 	ctx.state[0] = 0x67452301;
 	ctx.state[1] = 0xEFCDAB89;
@@ -98,48 +288,90 @@ void sha1_gpu_global (unsigned char *input, unsigned long size, unsigned char *o
 	else
 		total_threads = total_datablocks;
 	size_be = LETOBE32 (size * 8);  //how many bits in data
-
 	/* Allocate enough memory on the device */
+	printf("total_datablocks %d\n", total_datablocks);
 	cutStartTimer (&chmeter.malloc_timer);
-	cudaMallocManaged ((void**)&d_extended, total_datablocks * 80 * sizeof(unsigned int));
-	cudaMallocManaged ((void**)&d_ctx, sizeof (sha1_gpu_context));
+	for (int i = 0; i < HANDLE; ++i)
+	{
+		cudaMallocManaged ((void**)&d_extended[i], total_datablocks * 80 * sizeof(unsigned int));
+		cudaMallocManaged ((void**)&d_ctx[i], sizeof (sha1_gpu_context));
+		CUT_SAFE_CALL(cudaGetLastError());
+	}
+	cudaDeviceSynchronize();
 	cutStopTimer (&chmeter.malloc_timer, &time_res.malloc_timer_res);
 
 	/*
 	 * Copy the data from host to device and perform padding
 	 */
 	cutStartTimer (&chmeter.memcpy_h2d_timer);
-	//memcpy (d_ctx, &ctx, sizeof (sha1_gpu_context));
 	memset (input + size, 0x80, 1);
 	memset (input + size + 1, 0, pad + 7);
 	memcpy (input + size + pad + 4, &size_be, 4);
-	//cudaDeviceSynchronize();
-	int device = -1;
-  	cudaGetDevice(&device);
-  	cudaMemPrefetchAsync(input, size + pad + 8, device, NULL);
+	cudaMemPrefetchAsync(input, size + pad + 8, 0);
 	cutStopTimer (&chmeter.memcpy_h2d_timer, &time_res.memcpy_h2d_timer_res);
-
+	
+	CUT_SAFE_CALL(cudaMemcpyToSymbol(dblocks, &total_datablocks, sizeof(int)));
 	/*
 	 * Run the algorithm
 	 */
-	
-	sha1_kernel_global <<<1, total_threads>>>(input, d_ctx, d_extended, total_datablocks);
+	cutStartTimer (&chmeter.kernel_timer);
+	cudaStream_t stream[HANDLE];
+	for (int i = 0; i < HANDLE; ++i)
+	{
+		cudaStreamCreate(&stream[i]);
+	}
+	for (int i = 0; i < HANDLE; ++i)
+	{
+		sha1_kernel_global <<<26, 512, 0, stream[i]>>>(input, d_ctx[i], d_extended[i]);
+		CUT_SAFE_CALL(cudaGetLastError());
+	}
+	// for (int i = 0; i < HANDLE; ++i)
+	// {
+	// 	cudaMemPrefetchAsync(d_extended[i], total_datablocks * 80 * sizeof(unsigned int), cudaCpuDeviceId, stream[i]);
+	// }
 	cudaDeviceSynchronize();
 	cutStopTimer (&chmeter.kernel_timer, &time_res.kernel_timer_res);
-
-	cutStartTimer (&chmeter.memcpy_d2h_timer);
+	
+	// struct timeval s, e;
+	// gettimeofday(&s, NULL);
+	// for (int i = 0; i < HANDLE; ++i)
+	// {
+	// 	unsigned int *tmp = d_extended[i];
+	// 	for (int t = 0; t < total_datablocks; t++){
+	// 		sha1_gpu_process1 (&ctx, &tmp[t*80]);
+	// 	}
+	// }
+	// gettimeofday(&e, NULL);
+	// double tmp = (double)s.tv_sec*1000 + (double)s.tv_usec / 1000;
+	// double retime = (double)e.tv_sec*1000 + (double)e.tv_usec / 1000 - tmp;
+	// printf("cpu time %f ms \n", retime);
+	
 	/* Put the hash value in the users' buffer */
-	PUT_UINT32_BE( d_ctx->state[0], output,  0 );
-	PUT_UINT32_BE( d_ctx->state[1], output,  4 );
-	PUT_UINT32_BE( d_ctx->state[2], output,  8 );
-	PUT_UINT32_BE( d_ctx->state[3], output, 12 );
-	PUT_UINT32_BE( d_ctx->state[4], output, 16 );
+	cutStartTimer (&chmeter.memcpy_d2h_timer);
+	for (int i = 0; i < HANDLE; ++i)
+	{
+		// PUT_UINT32_BE( ctx.state[0], output,  0 );
+		// PUT_UINT32_BE( ctx.state[1], output,  4 );
+		// PUT_UINT32_BE( ctx.state[2], output,  8 );
+		// PUT_UINT32_BE( ctx.state[3], output, 12 );
+		// PUT_UINT32_BE( ctx.state[4], output, 16 );
+		PUT_UINT32_BE( d_ctx[i]->state[0], output,  0 );
+		PUT_UINT32_BE( d_ctx[i]->state[1], output,  4 );
+		PUT_UINT32_BE( d_ctx[i]->state[2], output,  8 );
+		PUT_UINT32_BE( d_ctx[i]->state[3], output, 12 );
+		PUT_UINT32_BE( d_ctx[i]->state[4], output, 16 );
+	}
 	cutStopTimer (&chmeter.memcpy_d2h_timer, &time_res.memcpy_d2h_timer_res);
 
 	cutStartTimer (&chmeter.free_timer);
-	cudaFree (d_ctx);
-	cudaFree (d_extended);
+	
+	for (int i = 0; i < HANDLE; ++i)
+	{
+		cudaFree (d_ctx[i]);
+		cudaFree (d_extended[i]);
+	}
 	cutStopTimer (&chmeter.free_timer, &time_res.free_timer_res);
+	cudaProfilerStop();
 }
 
 
@@ -161,27 +393,10 @@ int main(int argc, char *argv[])
 	printf ("SHA-1 HASH ALGORITHM BENCHMARK TEST\n");
 	printf ("===================================\n");
 
-	printf ("\nTesting algorithm correctness...\n");
-
-	cudaMallocManaged((void**)&data, strlen((const char*)tv1.data) + padding_256(strlen((const char*)tv1.data)) + 8);
-	memcpy(data, tv1.data, strlen((const char*)tv1.data));
-	sha1_gpu_global (data, strlen((const char*)tv1.data), hash, MAX_THREADS_PER_BLOCK);
-	if (memcmp (hash, tv1.hash, 20) == 0) printf ("GPU TEST 1 PASSED\n");
-	else printf ("GPU TEST 1 FAILED\n");
-	cudaFree(data);
-
-	cudaMallocManaged((void**)&data, strlen((const char*)tv2.data) + padding_256(strlen((const char*)tv2.data)) + 8);
-	memcpy(data, tv2.data, strlen((const char*)tv2.data));
-	sha1_gpu_global (data, strlen((const char*)tv2.data), hash, MAX_THREADS_PER_BLOCK);
-	if (memcmp (hash, tv2.hash, 20) == 0) printf ("GPU TEST 2 PASSED\n");
-	else printf ("GPU TEST 2 FAILED\n");
-	cudaFree(data);
-
-	printf ("Done.\n\n");
 	int n_1MB = 1000 * 1000;
 
 	FILE *finput;
-	finput = fopen("./cryptopp700.zip","rb");
+	finput = fopen("../data_10MB","rb");
 	if(!finput) {
 		printf("Unable to open input file\n"); 
 		exit(1);
@@ -192,15 +407,18 @@ int main(int argc, char *argv[])
 	fseek(finput, start, SEEK_SET);
 	unsigned long flength = end - start;
 	cudaMallocManaged((void**)&data, flength * sizeof(char) + padding_256(flength) + 8);
+	//data = (unsigned char *)malloc(flength * sizeof(char) + padding_256(flength) + 8);
 	if (data == NULL) {
 		printf ("ERROR: Insufficient memory on host\n");
 		return -1;
 	}
 	unsigned long rlength= fread(data, 1, flength, finput);
-	printf("read length %d\n", rlength);
+	printf("read length %lu, %lu\n", rlength, flength);
+	fclose(finput);
 
 	cutStartTimer(&chmeter.total_timer);
 	sha1_gpu_global (data, flength, hash, max_threads_per_block);
+	cudaFree(data);
 	cutStopTimer(&chmeter.total_timer, &time_res.total_timer_res);
 	printf ("GPU hash_size:%d MB\nkernel_time:%f ms\nmemcpy_h2d_time:%f ms\nmemcpy_d2h_time:%f ms\nmalloc_time:%f ms\nfree_time:%f ms\ntotal_time:%f ms\n\n", flength/n_1MB,
 			time_res.kernel_timer_res,
@@ -210,7 +428,6 @@ int main(int argc, char *argv[])
 			time_res.free_timer_res,
 			time_res.total_timer_res);
 
-	cudaFree(data);
 	for (int i = 0; i < 20; ++i)
 	{
 		printf("%x ", hash[i]);

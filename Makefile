@@ -1,4 +1,4 @@
-NVCC := /usr/local/cuda/bin/nvcc --ptxas-options=-v -arch=compute_60 -code=sm_60 -O3
+NVCC := /usr/local/cuda/bin/nvcc --ptxas-options=-v  -arch=compute_60 -code=sm_60 -O3
 LIBS := -L/usr/local/cuda/sdk/lib -L/usr/local/cuda/lib
 INCS := -I/usr/local/cuda/include -I/usr/include/cuda -I./ -I/usr/local/cuda/sdk/common/inc -I/usr/local/cuda-9.2/targets/x86_64-linux/include
 CFLAGS := $(INCS) -c# -D_DEBUG

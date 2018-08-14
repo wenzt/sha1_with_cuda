@@ -5,12 +5,12 @@
  * 32-bit integer manipulation macros (big endian)
  */
 #ifndef GET_UINT32_BE
-#define GET_UINT32_BE(n,b,i)\
+#define GET_UINT32_BE(n,b)\
 {\
-    (n) = ( (unsigned int) (b)[(i) ] << 24 )\
-        | ( (unsigned int) (b)[(i) + 1] << 16 )\
-        | ( (unsigned int) (b)[(i) + 2] <<  8 )\
-        | ( (unsigned int) (b)[(i) + 3]       );\
+    (n) = ( ((b) & 0x000000ff) << 24 )\
+        | ( ((b) & 0x0000ff00) << 8 )\
+        | ( ((b) & 0x00ff0000) >> 8 )\
+        | ( ((b) & 0xff000000) >> 24 );\
 }
 #endif
 
